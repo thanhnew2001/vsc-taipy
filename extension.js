@@ -70,7 +70,7 @@ async function triggerAPICall(editor) {
     // Get the selected text before the cursor position
     const selectedText = editor.document.getText(new vscode.Range(new vscode.Position(0, 0), lastCursorPosition));
 
-	console.log("triggerAPICall->")+selectedText
+	console.log("triggerAPICall->"+selectedText)
     if (selectedText) {
         try {
             // Send the selected text to an LLM API and get the response.
@@ -100,7 +100,7 @@ async function triggerAPICall(editor) {
 
 async function sendTextToLLMAPI(text) {
     // Define the API endpoint and request data.
-    const apiUrl = 'https://7b80-103-253-89-37.ngrok-free.app/api/generate';
+    const apiUrl = 'https://65a3-103-253-89-37.ngrok-free.app/api/generate';
     const requestData = {
         inputs: text,
         parameters: {
@@ -108,12 +108,15 @@ async function sendTextToLLMAPI(text) {
         },
     };
 
+    // console.log(requestData)
     // Send a POST request to the LLM API.
     try {
         const response = await axios.post(apiUrl, requestData);
-
+        console.log(response.status)
         if (response.status === 200) {
-            return response.data.generated_text;
+            text = response.data.generated_text
+            console.log(text)
+            return text;
         } else {
             throw new Error(`LLM API request failed with status code: ${response.status}`);
         }
