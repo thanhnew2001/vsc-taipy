@@ -1,0 +1,50 @@
+{
+  "name": "ghost-text-extension",
+  "displayName": "Ghost Text Extension",
+  "description": "Visual Studio Code extension to display ghost text",
+  "version": "1.0.0",
+  "publisher": "YourPublisherName",
+  "engines": {
+    "vscode": "^1.0.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+        {
+            "command": "extension.insertGhostText",
+            "title": "Insert Ghost Text"
+        }
+    ],
+    "keybindings": [
+        {
+            "command": "extension.insertGhostText",
+            "key": "tab",
+            "when": "editorTextFocus"
+        }
+    ]
+},
+  "repository": {
+    "type": "git",
+    "url": "YOUR_GIT_REPO_URL"
+  },
+  "icon": "icon.png",
+  "browserslist": {
+    "production": [
+      "last 1 chrome version"
+    ],
+    "development": [
+      "last 1 chrome version"
+    ]
+  },
+  "scripts": {},
+  "dependencies": {
+    "axios": "^1.6.0",
+    "vscode": "^1.1.37"
+  }
+}
