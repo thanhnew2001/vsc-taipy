@@ -1,10 +1,13 @@
 const vscode = require('vscode');
 const axios = require('axios');
 
+const CONTEXT_LENGTH = 32; // Default context length in tokens
+
 let disposable;
 let ghostTextDecorationType;
 let timer; // Timer to trigger the API call after a pause
 let lastCursorPosition; // Store the last cursor position for selected text
+let userTyping = false; // Variable to track if the user is typing
 
 // Maintain a list of active ghost text decorations
 let activeGhostTextDecorations = [];
@@ -30,25 +33,43 @@ function updateSelectedText(event) {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return;
 
-    // Get the selected text before the cursor position
+    // Get the selected text within the context length
     const selection = editor.selection;
     lastCursorPosition = editor.selection.active;
 
+    const startPosition = new vscode.Position(
+        Math.max(0, lastCursorPosition.line - CONTEXT_LENGTH),
+        Math.max(0, lastCursorPosition.character - CONTEXT_LENGTH)
+    );
+
+    const selectedText = editor.document.getText(new vscode.Range(startPosition, lastCursorPosition));
+
+    if (selectedText.length > CONTEXT_LENGTH * 2) {
+        // Truncate the selected text if it's longer than double the context length
+        const truncatedLength = selectedText.length - CONTEXT_LENGTH * 2;
+        selectedText = selectedText.substring(truncatedLength);
+    }
+
     if (!selection.isEmpty) {
-        // Trigger API call after a 3-second pause
+        // User is typing, set the flag to true
+        userTyping = true;
+
+        // Clear the timer
         clearTimeout(timer);
-        timer = setTimeout(() => {
-            triggerAPICall(editor);
-        }, 1500);
     }
 }
+
+// ... (rest of the code remains the same)
+
+// ... (rest of the code remains the same)
+
 
 function onTextDocumentChange(event) {
     // Handle Tab key presses separately when a document is modified
     if (event.contentChanges[0]?.text === '\t') {
         insertGhostText();
     } 
-	else {
+    else {
         // Clear the active ghost text decorations
         activeGhostTextDecorations = [];
         // Update the editor's decorations to remove the ghost text
@@ -57,11 +78,16 @@ function onTextDocumentChange(event) {
             editor.setDecorations(ghostTextDecorationType, activeGhostTextDecorations);
         }
 
-		//trigger it here
-		clearTimeout(timer);
-        timer = setTimeout(() => {
-            triggerAPICall(editor);
-        }, 500);
+        // User is not typing, trigger the API call
+        if (!userTyping) {
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+                triggerAPICall(editor);
+            }, 2000);
+        }
+
+        // Reset the userTyping flag
+        userTyping = false;
     }
 }
 
@@ -100,7 +126,7 @@ async function triggerAPICall(editor) {
 
 async function sendTextToLLMAPI(text) {
     // Define the API endpoint and request data.
-    const apiUrl = 'https://65a3-103-253-89-37.ngrok-free.app/api/generate';
+    const apiUrl = 'https://aee0-103-253-89-37.ngrok-free.app/api/generate';
     const requestData = {
         inputs: text,
         parameters: {
