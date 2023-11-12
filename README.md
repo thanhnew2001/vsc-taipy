@@ -7,8 +7,14 @@ Autocomplete and suggestion of code, i.e. code completion with custom local host
 
 ## Requirements
 
-A server API must be ready. Instruction for server installation as follows:
+A server API must be ready. 
+Update this line 129 in the extension.js with your own API
+    const apiUrl = 'https://aee0-103-253-89-37.ngrok-free.app/api/generate';
 
+Instruction for server installation as follows:
+- You will need at least 8GB VRAM to run this API
+Run it: python server_infer_ngrok_taipy.py
+Copy the ngrok generated API and replace the line 129 in the extension.
 
 ## Extension Settings
 
