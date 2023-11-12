@@ -7,7 +7,7 @@ from hf_hub_ctranslate2 import GeneratorCT2fromHfHub
 
 from flask import request, jsonify
 
-model_name = "thanhnew2001/taipy5-ct2"
+model_name = "taipy5-ct2" # note this is local folder model, the model uploaded to huggingface did not response correctly
 #model_name = "michaelfeil/ct2fast-starchat-alpha"
 #model_name = "michaelfeil/ct2fast-starchat-beta"
 model = GeneratorCT2fromHfHub(
