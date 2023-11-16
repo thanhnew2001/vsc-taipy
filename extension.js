@@ -126,18 +126,22 @@ async function triggerAPICall(editor) {
 
 async function sendTextToLLMAPI(text) {
     // Define the API endpoint and request data.
-    const apiUrl = 'https://aee0-103-253-89-37.ngrok-free.app/api/generate';
+    const apiUrl = 'https://992e-103-253-89-37.ngrok-free.app/api/generate';
     const requestData = {
         inputs: text,
         parameters: {
-            max_new_tokens: 64,
+            max_new_tokens: 24,
         },
     };
 
     // console.log(requestData)
     // Send a POST request to the LLM API.
     try {
-        const response = await axios.post(apiUrl, requestData);
+
+        const timeoutMilliseconds = 5000; // set the timeout to 5 seconds (adjust as needed)
+        const response = await axios.post(apiUrl, requestData, {
+            timeout: timeoutMilliseconds,
+        });
         console.log(response.status)
         if (response.status === 200) {
             text = response.data.generated_text
