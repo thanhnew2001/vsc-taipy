@@ -1,6 +1,9 @@
 # taipy2 README
 
 This is the README for your extension "taipy2". 
+## Pre-requisites:
+You must install vsc development: npm install --global yo generator-code vsce
+
 
 ## Features
 Autocomplete and suggestion of code, i.e. code completion with custom local hosted model API
@@ -19,6 +22,10 @@ _"ct2-transformers-converter --model thanhnew2001/starcoder-7b-taipy5 --output_d
 - You will need at least 8GB VRAM to run this API
 Run it: **python server_infer_ngrok_taipy.py**
 Copy the ngrok generated API and replace the line 129 in the extension.
+
+## How to run the plugin
+Click Run and Debug (the |> button) then select Extension Developing
+
 
 ## Extension Settings
 
