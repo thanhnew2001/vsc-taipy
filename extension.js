@@ -99,15 +99,15 @@ async function triggerAPICall(editor) {
 	console.log("triggerAPICall->"+selectedText)
     if (selectedText) {
         try {
-            // Send the selected text to an LLM API and get the response.
             const ghostText = await sendTextToLLMAPI(selectedText);
-
+            const processedGhostText = ghostText.replace(/\\/g, '')
+                                               
             // Create a new decoration with updated contentText.
             const newDecoration = {
                 range: new vscode.Range(lastCursorPosition, editor.selection.active),
                 renderOptions: {
                     after: {
-                        contentText: ghostText,
+                        contentText: processedGhostText,
                         color: '#888888',
                     },
                 },
@@ -126,10 +126,10 @@ async function triggerAPICall(editor) {
 
 async function sendTextToLLMAPI(text) {
     // Define the API endpoint and request data.
-    const apiUrl = 'https://992e-103-253-89-37.ngrok-free.app/api/generate';
+    const apiUrl = 'https://ade3-103-253-89-44.ngrok-free.app/api/generate';
     const requestData = {
         inputs: text,
-        parameters: {
+        parameters: {   
             max_new_tokens: 24,
         },
     };
@@ -138,7 +138,7 @@ async function sendTextToLLMAPI(text) {
     // Send a POST request to the LLM API.
     try {
 
-        const timeoutMilliseconds = 5000; // set the timeout to 5 seconds (adjust as needed)
+        const timeoutMilliseconds = 10000; // set the timeout to 5 seconds (adjust as needed)
         const response = await axios.post(apiUrl, requestData, {
             timeout: timeoutMilliseconds,
         });
