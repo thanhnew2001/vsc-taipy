@@ -92,14 +92,30 @@ function onTextDocumentChange(event) {
 }
 
 
+function getNLines(selectedText, n) {
+    // Split the selected text into lines
+    const lines = selectedText.split('\n');
+    
+    // Get the last n lines
+    const lastNLines = lines.slice(-n);
+    
+    // Join the lines with newline characters
+    const result = lastNLines.join('\n');
+    
+    // Return the combined lines as a text string
+    return result;
+}
+
 async function triggerAPICall(editor) {
     // Get the selected text before the cursor position
     const selectedText = editor.document.getText(new vscode.Range(new vscode.Position(0, 0), lastCursorPosition));
 
+    const partialText = getNLines(selectedText, 2)
+
 	console.log("triggerAPICall->"+selectedText)
     if (selectedText) {
         try {
-            const ghostText = await sendTextToLLMAPI(selectedText);
+            const ghostText = await sendTextToLLMAPI(partialText);
             const processedGhostText = ghostText.replace(/\\/g, '')
                                                
             // Create a new decoration with updated contentText.
