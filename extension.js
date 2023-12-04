@@ -12,6 +12,8 @@ let userTyping = false; // Variable to track if the user is typing
 // Maintain a list of active ghost text decorations
 let activeGhostTextDecorations = [];
 
+const URL = "https://immense-mastiff-incredibly.ngrok-free.app/api/generate"
+
 function activate(context) {
     console.log('Ghost Text Extension is active!');
 
@@ -112,7 +114,8 @@ async function triggerAPICall(editor) {
 
     const partialText = getNLines(selectedText, 2)
 
-	console.log("triggerAPICall->"+selectedText)
+	console.log("triggerAPICall->"+partialText)
+    
     if (selectedText) {
         try {
             const ghostText = await sendTextToLLMAPI(partialText);
@@ -142,7 +145,7 @@ async function triggerAPICall(editor) {
 
 async function sendTextToLLMAPI(text) {
     // Define the API endpoint and request data.
-    const apiUrl = 'https://ade3-103-253-89-44.ngrok-free.app/api/generate';
+    const apiUrl = URL;
     const requestData = {
         inputs: text,
         parameters: {   
