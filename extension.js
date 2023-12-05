@@ -35,93 +35,49 @@ function updateSelectedText(event) {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return;
 
-    // Get the selected text within the context length
-    const selection = editor.selection;
     lastCursorPosition = editor.selection.active;
-
-    const startPosition = new vscode.Position(
-        Math.max(0, lastCursorPosition.line - CONTEXT_LENGTH),
-        Math.max(0, lastCursorPosition.character - CONTEXT_LENGTH)
-    );
-
-    const selectedText = editor.document.getText(new vscode.Range(startPosition, lastCursorPosition));
-
-    if (selectedText.length > CONTEXT_LENGTH * 2) {
-        // Truncate the selected text if it's longer than double the context length
-        const truncatedLength = selectedText.length - CONTEXT_LENGTH * 2;
-        selectedText = selectedText.substring(truncatedLength);
-    }
-
-    if (!selection.isEmpty) {
-        // User is typing, set the flag to true
-        userTyping = true;
-
-        // Clear the timer
-        clearTimeout(timer);
-    }
+    userTyping = true;
+    clearTimeout(timer);
 }
-
-// ... (rest of the code remains the same)
-
-// ... (rest of the code remains the same)
-
 
 function onTextDocumentChange(event) {
-    // Handle Tab key presses separately when a document is modified
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+
     if (event.contentChanges[0]?.text === '\t') {
         insertGhostText();
-    } 
-    else {
-        // Clear the active ghost text decorations
+    } else {
         activeGhostTextDecorations = [];
-        // Update the editor's decorations to remove the ghost text
-        const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            editor.setDecorations(ghostTextDecorationType, activeGhostTextDecorations);
-        }
+        editor.setDecorations(ghostTextDecorationType, activeGhostTextDecorations);
 
-        // User is not typing, trigger the API call
-        if (!userTyping) {
-            clearTimeout(timer);
-            timer = setTimeout(() => {
-                triggerAPICall(editor);
-            }, 2000);
-        }
-
-        // Reset the userTyping flag
         userTyping = false;
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            triggerAPICall(editor);
+        }, 1000); // Reduced delay
     }
 }
 
-
-function getNLines(selectedText, n) {
-    // Split the selected text into lines
-    const lines = selectedText.split('\n');
-    
-    // Get the last n lines
-    const lastNLines = lines.slice(-n);
-    
-    // Join the lines with newline characters
-    const result = lastNLines.join('\n');
-    
-    // Return the combined lines as a text string
-    return result;
+function getCurrentCodeBlock(editor, position) {
+    const document = editor.document;
+    let startLine = position.line;
+    while (startLine > 0 && !document.lineAt(startLine).text.includes('{')) {
+        startLine--;
+    }
+    const endLine = position.line;
+    const range = new vscode.Range(new vscode.Position(startLine, 0), new vscode.Position(endLine, 0));
+    return document.getText(range);
 }
 
 async function triggerAPICall(editor) {
-    // Get the selected text before the cursor position
-    const selectedText = editor.document.getText(new vscode.Range(new vscode.Position(0, 0), lastCursorPosition));
+    const codeBlock = getCurrentCodeBlock(editor, lastCursorPosition);
 
-    const partialText = getNLines(selectedText, 2)
-
-	console.log("triggerAPICall->"+partialText)
-    
-    if (selectedText) {
+    if (codeBlock) {
         try {
-            const ghostText = await sendTextToLLMAPI(partialText);
-            const processedGhostText = ghostText.replace(/\\/g, '')
-                                               
-            // Create a new decoration with updated contentText.
+            const ghostText = await sendTextToLLMAPI(codeBlock);
+            console.log("input sent: "+ghostText)
+            const processedGhostText = processAPIResponse(ghostText);
+
             const newDecoration = {
                 range: new vscode.Range(lastCursorPosition, editor.selection.active),
                 renderOptions: {
@@ -132,10 +88,7 @@ async function triggerAPICall(editor) {
                 },
             };
 
-            // Add the new decoration to the list of active decorations
             activeGhostTextDecorations.push(newDecoration);
-
-            // Apply all active decorations
             editor.setDecorations(ghostTextDecorationType, activeGhostTextDecorations);
         } catch (error) {
             console.error('Error fetching ghost text:', error);
@@ -143,29 +96,31 @@ async function triggerAPICall(editor) {
     }
 }
 
+function processAPIResponse(responseText) {
+    const lines = responseText.split('\n');
+    if (lines.length > 1 && !lines[lines.length - 1].endsWith(';')) {
+        lines.pop();
+    }
+    return lines.join('\n');
+}
+
 async function sendTextToLLMAPI(text) {
-    // Define the API endpoint and request data.
     const apiUrl = URL;
     const requestData = {
         inputs: text,
         parameters: {   
-            max_new_tokens: 24,
+            max_new_tokens: CONTEXT_LENGTH,
         },
     };
 
-    // console.log(requestData)
-    // Send a POST request to the LLM API.
     try {
-
-        const timeoutMilliseconds = 10000; // set the timeout to 5 seconds (adjust as needed)
+        const timeoutMilliseconds = 5000;
         const response = await axios.post(apiUrl, requestData, {
             timeout: timeoutMilliseconds,
         });
-        console.log(response.status)
+
         if (response.status === 200) {
-            text = response.data.generated_text
-            console.log(text)
-            return text;
+            return response.data.generated_text;
         } else {
             throw new Error(`LLM API request failed with status code: ${response.status}`);
         }
@@ -176,19 +131,15 @@ async function sendTextToLLMAPI(text) {
 
 function insertGhostText() {
     const editor = vscode.window.activeTextEditor;
-
     if (!editor) return;
 
-    // Check if there are active ghost text decorations
     if (activeGhostTextDecorations.length > 0) {
         const ghostText = activeGhostTextDecorations[0].renderOptions.after.contentText;
 
-        // Insert the ghost text at the cursor position
         editor.edit(editBuilder => {
             editBuilder.insert(lastCursorPosition, ghostText);
         });
 
-        // Remove the active ghost text decoration
         activeGhostTextDecorations = [];
         editor.setDecorations(ghostTextDecorationType, activeGhostTextDecorations);
     }
