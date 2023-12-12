@@ -1,34 +1,49 @@
 const vscode = require('vscode');
 const axios = require('axios');
 
-const CONTEXT_LENGTH = 32; // Default context length in tokens
-
 let disposable;
 let ghostTextDecorationType;
-let timer; // Timer to trigger the API call after a pause
-let lastCursorPosition; // Store the last cursor position for selected text
-let userTyping = false; // Variable to track if the user is typing
-
-// Maintain a list of active ghost text decorations
+let timer;
+let lastCursorPosition;
 let activeGhostTextDecorations = [];
 
-const URL = "https://immense-mastiff-incredibly.ngrok-free.app/api/generate"
+let CONTEXT_LENGTH; // Will be set based on configuration
+let DELAY_SECONDS;  // Will be set based on configuration
+let API_URL;        // Will be set based on configuration
 
 function activate(context) {
-    console.log('Ghost Text Extension is active!');
+    // Read configurations
+    const config = vscode.workspace.getConfiguration('typycopilot');
+    CONTEXT_LENGTH = config.get('CONTEXT_LENGTH', 24);
+    DELAY_SECONDS = config.get('DELAY_SECONDS', 1) * 1000; // Convert to milliseconds
+    API_URL = config.get('API_URL', 'https://immense-mastiff-incredibly.ngrok-free.app/api/generate');
+
+    // Rest of your activation code...
+    futher_activate(context) 
+}
+
+
+
+function futher_activate(context) {
+    updateStatusBar('TyPy Copilot activated!');
 
     ghostTextDecorationType = vscode.window.createTextEditorDecorationType({
         after: {
-            contentText: '', // Initialize contentText as empty
-            color: '#888888', // Ghost text color
+            contentText: '',
+            color: '#888888',
         },
     });
 
     disposable = vscode.window.onDidChangeTextEditorSelection(updateSelectedText);
     vscode.workspace.onDidChangeTextDocument(onTextDocumentChange);
-
-    // Register the "insertGhostText" command to handle Tab key presses
     context.subscriptions.push(vscode.commands.registerCommand('extension.insertGhostText', insertGhostText));
+}
+
+function updateStatusBar(message) {
+    const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    statusBar.text = message;
+    statusBar.show();
+    setTimeout(() => statusBar.dispose(), 5000);
 }
 
 function updateSelectedText(event) {
@@ -36,7 +51,6 @@ function updateSelectedText(event) {
     if (!editor) return;
 
     lastCursorPosition = editor.selection.active;
-    userTyping = true;
     clearTimeout(timer);
 }
 
@@ -44,60 +58,64 @@ function onTextDocumentChange(event) {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return;
 
-    if (event.contentChanges[0]?.text === '\t') {
-        insertGhostText();
-    } else {
-        activeGhostTextDecorations = [];
-        editor.setDecorations(ghostTextDecorationType, activeGhostTextDecorations);
-
-        userTyping = false;
+    const textAfterCursor = getTextAfterCursor(editor);
+    if (textAfterCursor.trim().length > 0) {
+        clearGhostTextDecorations(editor);
+        updateStatusBar("Ghost text generation stopped: Text present after cursor.");
         clearTimeout(timer);
-        timer = setTimeout(() => {
-            triggerAPICall(editor);
-        }, 1000); // Reduced delay
+    } else if (event.contentChanges[0]?.text === '\t') {
+        // Prevent the default tab behavior
+        event.preventDefault();
+        insertGhostText();  
+    } else {
+        triggerDelayedAPICall(editor);
     }
+}
+
+// Add this helper method if it doesn't exist
+function getTextAfterCursor(editor) {
+    const currentPosition = editor.selection.active;
+    const document = editor.document;
+    const currentLine = document.lineAt(currentPosition.line);
+    return currentLine.text.substring(currentPosition.character);
+}
+
+
+function triggerDelayedAPICall(editor) {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+        triggerAPICall(editor);
+    }, DELAY_SECONDS);
 }
 
 function getCurrentCodeBlock(editor, position) {
     const document = editor.document;
-    let startLine = position.line;
-    while (startLine > 0 && !document.lineAt(startLine).text.includes('{')) {
-        startLine--;
-    }
-    const endLine = position.line;
-    const range = new vscode.Range(new vscode.Position(startLine, 0), new vscode.Position(endLine, 0));
+    const range = new vscode.Range(new vscode.Position(0, 0), position);
     return document.getText(range);
 }
 
 async function triggerAPICall(editor) {
     const codeBlock = getCurrentCodeBlock(editor, lastCursorPosition);
-
     if (codeBlock) {
         try {
+            updateStatusBar('Sending prompt to API...');
             const ghostText = await sendTextToLLMAPI(codeBlock);
-            console.log("input sent: "+ghostText)
+            console.log("prompt="+codeBlock)
+            console.log("response="+ghostText)
+            updateStatusBar('Response received from API.');
             const processedGhostText = processAPIResponse(ghostText);
-
-            const newDecoration = {
-                range: new vscode.Range(lastCursorPosition, editor.selection.active),
-                renderOptions: {
-                    after: {
-                        contentText: processedGhostText,
-                        color: '#888888',
-                    },
-                },
-            };
-
-            activeGhostTextDecorations.push(newDecoration);
-            editor.setDecorations(ghostTextDecorationType, activeGhostTextDecorations);
+            console.log("processed="+processedGhostText)
+            updateGhostTextDecoration(editor, processedGhostText);
         } catch (error) {
-            console.error('Error fetching ghost text:', error);
+            console.error('Error fetching text:', error);
+            updateStatusBar('Error fetching text.');
         }
     }
 }
 
 function processAPIResponse(responseText) {
-    const lines = responseText.split('\n');
+    const cleanedResponse = responseText.replace(/<PRE>/g, '');
+    const lines = cleanedResponse.split('\n');
     if (lines.length > 1 && !lines[lines.length - 1].endsWith(';')) {
         lines.pop();
     }
@@ -105,17 +123,14 @@ function processAPIResponse(responseText) {
 }
 
 async function sendTextToLLMAPI(text) {
-    const apiUrl = URL;
     const requestData = {
         inputs: text,
-        parameters: {   
-            max_new_tokens: CONTEXT_LENGTH,
-        },
+        parameters: { max_new_tokens: CONTEXT_LENGTH },
     };
 
     try {
         const timeoutMilliseconds = 5000;
-        const response = await axios.post(apiUrl, requestData, {
+        const response = await axios.post(API_URL, requestData, {
             timeout: timeoutMilliseconds,
         });
 
@@ -129,20 +144,51 @@ async function sendTextToLLMAPI(text) {
     }
 }
 
+function clearGhostTextDecorations(editor) {
+    activeGhostTextDecorations = [];
+    editor.setDecorations(ghostTextDecorationType, activeGhostTextDecorations);
+}
+
+function updateGhostTextDecoration(editor, ghostText) {
+    clearGhostTextDecorations(editor);
+
+    const lines = ghostText.split('\n');
+    lines.reverse().forEach((line, index) => {
+        if (line) {
+            // Calculate the position to insert this line of ghost text
+            const linePosition = lastCursorPosition.with(lastCursorPosition.line + lines.length - 1 - index, Number.MAX_VALUE);
+            const newDecoration = {
+                range: new vscode.Range(linePosition, linePosition),
+                renderOptions: {
+                    after: {
+                        contentText: line,
+                        color: '#888888',
+                        textDecoration: 'none;'
+                    },
+                },
+            };
+            activeGhostTextDecorations.push(newDecoration);
+           
+        }
+    });
+    editor.setDecorations(ghostTextDecorationType, activeGhostTextDecorations);
+}
+
+
 function insertGhostText() {
     const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
+    if (!editor || activeGhostTextDecorations.length === 0) return;
 
-    if (activeGhostTextDecorations.length > 0) {
-        const ghostText = activeGhostTextDecorations[0].renderOptions.after.contentText;
-
-        editor.edit(editBuilder => {
-            editBuilder.insert(lastCursorPosition, ghostText);
+    editor.edit(editBuilder => {
+        // Process the decorations in reverse order
+        activeGhostTextDecorations.slice().reverse().forEach(decoration => {
+            const ghostTextLine = decoration.renderOptions.after.contentText;
+            // Insert at the last cursor position
+            editBuilder.insert(lastCursorPosition, ghostTextLine + '\n');
         });
+    });
 
-        activeGhostTextDecorations = [];
-        editor.setDecorations(ghostTextDecorationType, activeGhostTextDecorations);
-    }
+    clearGhostTextDecorations(editor);
 }
 
 function deactivate() {
