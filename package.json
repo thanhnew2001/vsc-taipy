@@ -1,9 +1,9 @@
 {
-  "name": "ghost-text-extension",
-  "displayName": "Ghost Text Extension",
-  "description": "Visual Studio Code extension to display ghost text",
-  "version": "1.0.0",
-  "publisher": "YourPublisherName",
+  "name": "typycopilot",
+  "displayName": "TyPy Copilot",
+  "description": "Visual Studio Code extension to support writing code using Taipy",
+  "version": "1.0.2",
+  "publisher": "TyPy",
   "engines": {
     "vscode": "^1.0.0"
   },
@@ -16,19 +16,40 @@
   "main": "./extension.js",
   "contributes": {
     "commands": [
-        {
-            "command": "extension.insertGhostText",
-            "title": "Insert Ghost Text"
-        }
+      {
+        "command": "extension.insertGhostText",
+        "title": "typycopilot"
+      }
     ],
     "keybindings": [
-        {
-            "command": "extension.insertGhostText",
-            "key": "tab",
-            "when": "editorTextFocus"
+      {
+        "command": "extension.insertGhostText",
+        "key": "tab",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "TyPy Copilot Configuration",
+      "properties": {
+        "typycopilot.CONTEXT_LENGTH": {
+          "type": "number",
+          "default": 24,
+          "description": "Maximum length of ghost text."
+        },
+        "typycopilot.DELAY_SECONDS": {
+          "type": "number",
+          "default": 1,
+          "description": "Delay in seconds before triggering API call."
+        },
+        "typycopilot.API_URL": {
+          "type": "string",
+          "default": "https://immense-mastiff-incredibly.ngrok-free.app/api/generate",
+          "description": "API URL for fetching ghost text."
         }
-    ]
-},
+      }
+    }
+  },
   "repository": {
     "type": "git",
     "url": "YOUR_GIT_REPO_URL"
@@ -44,7 +65,6 @@
   },
   "scripts": {},
   "dependencies": {
-    "axios": "^1.6.0",
-    "vscode": "^1.1.37"
+    "axios": "^1.6.0"
   }
 }
