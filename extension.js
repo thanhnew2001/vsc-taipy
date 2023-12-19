@@ -1,32 +1,82 @@
 const vscode = require('vscode');
 const axios = require('axios');
-
 let disposable;
 let ghostTextDecorationType;
 let timer;
 let lastCursorPosition;
 let activeGhostTextDecorations = [];
+let apiToggleStatusBar;
+let modeToggleStatusBar;
+let generalStatusBar;
+let isApiCallEnabled = true; // Control flag for API calls
+let mode = 'TaipyMarkdown'; // Possible values: 'TaipyMarkdown', 'PythonCodeGenerator'
 
 let CONTEXT_LENGTH; // Will be set based on configuration
 let DELAY_SECONDS;  // Will be set based on configuration
 let API_URL;        // Will be set based on configuration
 
 function activate(context) {
+    // Initialize status bar items
+    apiToggleStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 300);
+    modeToggleStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 200);
+    generalStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+
     // Read configurations
     const config = vscode.workspace.getConfiguration('typycopilot');
-    CONTEXT_LENGTH = config.get('CONTEXT_LENGTH', 24);
-    DELAY_SECONDS = config.get('DELAY_SECONDS', 1) * 1000; // Convert to milliseconds
+    CONTEXT_LENGTH = config.get('CONTEXT_LENGTH', 36);
+    DELAY_SECONDS = config.get('DELAY_SECONDS', 2) * 1000; // Convert to milliseconds
     API_URL = config.get('API_URL', 'https://immense-mastiff-incredibly.ngrok-free.app/api/generate');
 
-    // Rest of your activation code...
-    futher_activate(context) 
+    // Register commands
+    let toggleApiCallCommand = vscode.commands.registerCommand('typycopilot.toggleApiCall', toggleApiCall);
+    let toggleModeCommand = vscode.commands.registerCommand('typycopilot.toggleMode', toggleModeAction);
+    context.subscriptions.push(toggleApiCallCommand, toggleModeCommand);
+
+    // Setup and show status bars
+    updateApiToggleStatusBar();
+    updateModeToggleStatusBar();
+    generalStatusBar.text = 'TaiPy Copilot Ready';
+    generalStatusBar.show();
+
+    // Add status bars to subscriptions
+    context.subscriptions.push(apiToggleStatusBar, modeToggleStatusBar, generalStatusBar);
+
+    // Further activation process
+    further_activate(context);
+    insertSampleTextIfEditorEmpty();
 }
 
+function updateApiToggleStatusBar() {
+    apiToggleStatusBar.text = `API: ${isApiCallEnabled ? 'Enabled' : 'Disabled'}`;
+    apiToggleStatusBar.command = 'typycopilot.toggleApiCall';
+    apiToggleStatusBar.show();
+}
 
+function updateModeToggleStatusBar() {
+    modeToggleStatusBar.text = `Mode: ${mode === 'TaipyMarkdown' ? 'Taipy Markdown' : 'Python Code Generator'}`;
+    modeToggleStatusBar.command = 'typycopilot.toggleMode';
+    modeToggleStatusBar.show();
+}
 
-function futher_activate(context) {
-    updateStatusBar('TyPy Copilot activated!');
+function updateGeneralStatusBar(message){
+    generalStatusBar.text = message
+}
 
+function toggleApiCall() {
+    isApiCallEnabled = !isApiCallEnabled;
+    updateApiToggleStatusBar();
+    generalStatusBar.text = `API Call ${isApiCallEnabled ? 'Enabled' : 'Disabled'}`;
+}
+
+function toggleModeAction() {
+    mode = mode === 'TaipyMarkdown' ? 'PythonCodeGenerator' : 'TaipyMarkdown';
+    updateModeToggleStatusBar();
+    generalStatusBar.text = `Mode switched to ${mode === 'TaipyMarkdown' ? 'Taipy Markdown' : 'Python Code Generator'}`;
+    // Generate sample code
+    insertSampleTextIfEditorEmpty()
+}
+
+function further_activate(context) {
     ghostTextDecorationType = vscode.window.createTextEditorDecorationType({
         after: {
             contentText: '',
@@ -38,12 +88,23 @@ function futher_activate(context) {
     vscode.workspace.onDidChangeTextDocument(onTextDocumentChange);
     context.subscriptions.push(vscode.commands.registerCommand('extension.insertGhostText', insertGhostText));
 }
+ 
 
-function updateStatusBar(message) {
-    const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    statusBar.text = message;
-    statusBar.show();
-    setTimeout(() => statusBar.dispose(), 5000);
+function toggleApiCall() {
+    isApiCallEnabled = !isApiCallEnabled;
+    updateApiToggleStatusBar(isApiCallEnabled ? 'API Call Enabled' : 'API Call Disabled');
+}
+
+function insertSampleTextIfEditorEmpty() {
+    if (mode != 'PythonCodeGenerator') return;
+    const editor = vscode.window.activeTextEditor;
+    if (editor && !editor.document.getText()) {
+        const sampleText = '# In Taipy, create temperature converter app\nfrom taipy.gui import Gui\n<FILL_ME>\nGui(page).run(use_reloader=True, port=5007)';
+        const firstLine = editor.document.lineAt(0);
+        const edit = new vscode.WorkspaceEdit();
+        edit.insert(editor.document.uri, firstLine.range.start, sampleText);
+        vscode.workspace.applyEdit(edit);
+    }
 }
 
 function updateSelectedText(event) {
@@ -55,22 +116,30 @@ function updateSelectedText(event) {
 }
 
 function onTextDocumentChange(event) {
+
+    if (!isApiCallEnabled) return;
+ 
     const editor = vscode.window.activeTextEditor;
     if (!editor) return;
 
     const textAfterCursor = getTextAfterCursor(editor);
-    if (textAfterCursor.trim().length > 0) {
+    if (event.contentChanges.length > 0 && event.contentChanges[0].text !== '\t') {
         clearGhostTextDecorations(editor);
-        updateStatusBar("Ghost text generation stopped: Text present after cursor.");
+    }
+
+    if (textAfterCursor.trim().length > 0) {
+        updateGeneralStatusBar("TaiPycopilot stopped as there is text present after cursor.");
         clearTimeout(timer);
     } else if (event.contentChanges[0]?.text === '\t') {
         // Prevent the default tab behavior
         event.preventDefault();
-        insertGhostText();  
+        insertGhostText();
     } else {
+        console.log('call')
         triggerDelayedAPICall(editor);
     }
 }
+
 
 // Add this helper method if it doesn't exist
 function getTextAfterCursor(editor) {
@@ -82,10 +151,13 @@ function getTextAfterCursor(editor) {
 
 
 function triggerDelayedAPICall(editor) {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-        triggerAPICall(editor);
-    }, DELAY_SECONDS);
+    const textAfterCursor = getTextAfterCursor(editor);
+    if (textAfterCursor.trim().length === 0) {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            triggerAPICall(editor);
+        }, DELAY_SECONDS);
+    }
 }
 
 function getCurrentCodeBlock(editor, position) {
@@ -94,21 +166,28 @@ function getCurrentCodeBlock(editor, position) {
     return document.getText(range);
 }
 
+function getCurrentCodeBlockFromBeginning(editor) {
+    if (!editor) {
+        return '';  // Return an empty string if there's no active editor
+    }
+
+    const document = editor.document;
+    return document.getText();  // Retrieves the entire text of the document
+}
+
+
 async function triggerAPICall(editor) {
     const codeBlock = getCurrentCodeBlock(editor, lastCursorPosition);
     if (codeBlock) {
         try {
-            updateStatusBar('Sending prompt to API...');
+            updateGeneralStatusBar('Sending prompt to API...');
             const ghostText = await sendTextToLLMAPI(codeBlock);
-            console.log("prompt="+codeBlock)
-            console.log("response="+ghostText)
-            updateStatusBar('Response received from API.');
+            updateGeneralStatusBar('Response received from API.');
             const processedGhostText = processAPIResponse(ghostText);
-            console.log("processed="+processedGhostText)
             updateGhostTextDecoration(editor, processedGhostText);
         } catch (error) {
             console.error('Error fetching text:', error);
-            updateStatusBar('Error fetching text.');
+            updateGeneralStatusBar('Error fetching text.');
         }
     }
 }
@@ -116,24 +195,33 @@ async function triggerAPICall(editor) {
 function processAPIResponse(responseText) {
     const cleanedResponse = responseText.replace(/<PRE>/g, '');
     const lines = cleanedResponse.split('\n');
+    
+    // Check if there is more than one line or if the last line ends with a semicolon
     if (lines.length > 1 && !lines[lines.length - 1].endsWith(';')) {
         lines.pop();
+    } else if (lines.length === 1) {
+        // If there is only one line and it does not end with a semicolon, return it as is
+        return lines[0];
     }
     return lines.join('\n');
 }
 
 async function sendTextToLLMAPI(text) {
+    console.log("testing..")
     const requestData = {
         inputs: text,
         parameters: { max_new_tokens: CONTEXT_LENGTH },
+        mode: mode
     };
+
+    console.log(requestData)
 
     try {
         const timeoutMilliseconds = 5000;
         const response = await axios.post(API_URL, requestData, {
             timeout: timeoutMilliseconds,
         });
-
+ 
         if (response.status === 200) {
             return response.data.generated_text;
         } else {
@@ -193,6 +281,7 @@ function insertGhostText() {
 
 function deactivate() {
     disposable.dispose();
+    statusBar.dispose();
 }
 
 module.exports = {
