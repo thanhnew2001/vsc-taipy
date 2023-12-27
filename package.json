@@ -1,9 +1,9 @@
 {
-  "name": "typycopilot",
-  "displayName": "TyPy Copilot",
+  "name": "Taipycopilot",
+  "displayName": "Taipy Copilot",
   "description": "Visual Studio Code extension to support writing code using Taipy",
-  "version": "1.0.2",
-  "publisher": "TyPy",
+  "version": "1.0.3",
+  "publisher": "Avaiga",
   "engines": {
     "vscode": "^1.0.0"
   },
@@ -18,34 +18,34 @@
     "commands": [
       {
         "command": "extension.insertGhostText",
-        "title": "typycopilot"
+        "title": "Taipycopilot"
       }
     ],
     "keybindings": [
       {
-        "command": "extension.insertGhostText",
-        "key": "tab",
-        "when": "editorTextFocus"
+          "command": "extension.handleTab",
+          "key": "tab",
+          "when": "editorTextFocus"
       }
     ],
     "configuration": {
       "type": "object",
-      "title": "TyPy Copilot Configuration",
+      "title": "Taipy Copilot Configuration",
       "properties": {
-        "typycopilot.CONTEXT_LENGTH": {
+        "Taipycopilot.CONTEXT_LENGTH": {
           "type": "number",
           "default": 24,
           "description": "Maximum length of ghost text."
         },
-        "typycopilot.DELAY_SECONDS": {
+        "Taipycopilot.DELAY_SECONDS": {
           "type": "number",
           "default": 1,
           "description": "Delay in seconds before triggering API call."
         },
-        "typycopilot.API_URL": {
+        "Taipycopilot.API_URL": {
           "type": "string",
           "default": "https://immense-mastiff-incredibly.ngrok-free.app/api/generate",
-          "description": "API URL for fetching ghost text."
+          "description": "API URL for fetching code completion."
         }
       }
     }
