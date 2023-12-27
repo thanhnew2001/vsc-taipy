@@ -23,14 +23,20 @@ function activate(context) {
 
     // Read configurations
     const config = vscode.workspace.getConfiguration('typycopilot');
-    CONTEXT_LENGTH = config.get('CONTEXT_LENGTH', 36);
+    CONTEXT_LENGTH = config.get('CONTEXT_LENGTH', 24);
     DELAY_SECONDS = config.get('DELAY_SECONDS', 2) * 1000; // Convert to milliseconds
-    API_URL = config.get('API_URL', 'https://immense-mastiff-incredibly.ngrok-free.app/api/generate');
+    //API_URL = config.get('API_URL', 'https://immense-mastiff-incredibly.ngrok-free.app/api/generate');
 
+    API_URL = config.get('API_URL', 'https://trusting-inherently-feline.ngrok-free.app/api/generate');
+page 
     // Register commands
     let toggleApiCallCommand = vscode.commands.registerCommand('typycopilot.toggleApiCall', toggleApiCall);
     let toggleModeCommand = vscode.commands.registerCommand('typycopilot.toggleMode', toggleModeAction);
     context.subscriptions.push(toggleApiCallCommand, toggleModeCommand);
+
+     // Register a command for the Tab key
+     let handleTabCommand = vscode.commands.registerCommand('extension.handleTab', handleTab);
+     context.subscriptions.push(handleTabCommand);
 
     // Setup and show status bars
     updateApiToggleStatusBar();
@@ -99,7 +105,7 @@ function insertSampleTextIfEditorEmpty() {
     if (mode != 'PythonCodeGenerator') return;
     const editor = vscode.window.activeTextEditor;
     if (editor && !editor.document.getText()) {
-        const sampleText = '# In Taipy, create temperature converter app\nfrom taipy.gui import Gui\n<FILL_ME>\nGui(page).run(use_reloader=True, port=5007)';
+        const sampleText = '# In Taipy, create temperature converter app\nfrom taipy.gui import Gui\n# Your Taipy logic here\nGui(page).run(use_reloader=True, port=5007)';
         const firstLine = editor.document.lineAt(0);
         const edit = new vscode.WorkspaceEdit();
         edit.insert(editor.document.uri, firstLine.range.start, sampleText);
@@ -115,31 +121,39 @@ function updateSelectedText(event) {
     clearTimeout(timer);
 }
 
-function onTextDocumentChange(event) {
+function handleTab() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
 
+    // Check if there are any active ghost text decorations
+    if (activeGhostTextDecorations.length > 0) {
+        // Prevent the default tab behavior and insert ghost text
+        insertGhostText();
+    } else {
+        // If no ghost text is present, execute the default tab behavior
+        vscode.commands.executeCommand('tab');
+    }
+}
+
+function onTextDocumentChange(event) {
     if (!isApiCallEnabled) return;
  
     const editor = vscode.window.activeTextEditor;
     if (!editor) return;
 
     const textAfterCursor = getTextAfterCursor(editor);
+    if (textAfterCursor.trim().length > 0) {
+        updateGeneralStatusBar("Text present after cursor: Fill-in-middle mode");
+    }
+
+    // Clear ghost text decorations if the change is not a tab press
     if (event.contentChanges.length > 0 && event.contentChanges[0].text !== '\t') {
         clearGhostTextDecorations(editor);
     }
 
-    if (textAfterCursor.trim().length > 0) {
-        updateGeneralStatusBar("TaiPycopilot stopped as there is text present after cursor.");
-        clearTimeout(timer);
-    } else if (event.contentChanges[0]?.text === '\t') {
-        // Prevent the default tab behavior
-        event.preventDefault();
-        insertGhostText();
-    } else {
-        console.log('call')
-        triggerDelayedAPICall(editor);
-    }
+    console.log('call');
+    triggerDelayedAPICall(editor);
 }
-
 
 // Add this helper method if it doesn't exist
 function getTextAfterCursor(editor) {
@@ -148,7 +162,6 @@ function getTextAfterCursor(editor) {
     const currentLine = document.lineAt(currentPosition.line);
     return currentLine.text.substring(currentPosition.character);
 }
-
 
 function triggerDelayedAPICall(editor) {
     const textAfterCursor = getTextAfterCursor(editor);
@@ -177,7 +190,17 @@ function getCurrentCodeBlockFromBeginning(editor) {
 
 
 async function triggerAPICall(editor) {
-    const codeBlock = getCurrentCodeBlock(editor, lastCursorPosition);
+    let codeBlock;
+
+    if (mode === 'TaipyMarkdown') {
+        // Get the line before the cursor position
+        codeBlock = "In Taipy, " + getLineBeforeCursor(editor, lastCursorPosition);
+    } else {
+        // Get the whole document text and insert <FILL_ME> token at the cursor position in the text sent to API
+        codeBlock = getCurrentCodeBlockFromBeginning(editor);
+        //codeBlock = insertFillMeTokenInText(codeBlock, lastCursorPosition);
+    }
+
     if (codeBlock) {
         try {
             updateGeneralStatusBar('Sending prompt to API...');
@@ -187,10 +210,54 @@ async function triggerAPICall(editor) {
             updateGhostTextDecoration(editor, processedGhostText);
         } catch (error) {
             console.error('Error fetching text:', error);
-            updateGeneralStatusBar('Error fetching text.');
+            updateGeneralStatusBar('Please give me few more initial text so I can suggest code');
         }
     }
 }
+
+function getLineBeforeCursor(editor, position) {
+    const document = editor.document;
+    let lineNumber = position.line;
+    while (lineNumber >= 0) {
+        const lineText = document.lineAt(lineNumber).text;
+        if (lineText.trim().length > 0) {
+            return lineText;
+        }
+        lineNumber--;
+    }
+    return '';
+}
+
+
+// function insertFillMeTokenInText(text, position) {
+//     // Convert the text into an array of lines
+//     const lines = text.split('\n');
+//     const positionLine = position.line;
+//     const positionChar = position.character;
+
+//     // Check if the position line is within the range of lines array
+//     if (positionLine < lines.length) {
+//         // Insert <FILL_ME> at the specified character position in the specified line
+//         lines[positionLine] = lines[positionLine].slice(0, positionChar) + '<FILL_ME>' + lines[positionLine].slice(positionChar);
+//     } 
+//     else {
+//         // If position line is out of range, append <FILL_ME> at the end
+//         lines.push('<FILL_ME>');
+//     }
+
+//     // Join the lines back into a single text string
+//     return lines.join('\n');
+// }
+
+
+function getCurrentCodeBlockFromBeginning(editor) {
+    if (!editor) {
+        return '';  // Return an empty string if there's no active editor
+    }
+    const document = editor.document;
+    return document.getText();  // Retrieves the entire text of the document
+}
+
 
 function processAPIResponse(responseText) {
     const cleanedResponse = responseText.replace(/<PRE>/g, '');
@@ -207,7 +274,7 @@ function processAPIResponse(responseText) {
 }
 
 async function sendTextToLLMAPI(text) {
-    console.log("testing..")
+
     const requestData = {
         inputs: text,
         parameters: { max_new_tokens: CONTEXT_LENGTH },
