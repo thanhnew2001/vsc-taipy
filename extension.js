@@ -23,12 +23,11 @@ function activate(context) {
 
     // Read configurations
     const config = vscode.workspace.getConfiguration('typycopilot');
-    CONTEXT_LENGTH = config.get('CONTEXT_LENGTH', 24);
-    DELAY_SECONDS = config.get('DELAY_SECONDS', 2) * 1000; // Convert to milliseconds
+    CONTEXT_LENGTH = config.get('CONTEXT_LENGTH', 32);
+    DELAY_SECONDS = config.get('DELAY_SECONDS', 1) * 1000; // Convert to milliseconds
     //API_URL = config.get('API_URL', 'https://immense-mastiff-incredibly.ngrok-free.app/api/generate');
 
     API_URL = config.get('API_URL', 'https://trusting-inherently-feline.ngrok-free.app/api/generate');
-page 
     // Register commands
     let toggleApiCallCommand = vscode.commands.registerCommand('typycopilot.toggleApiCall', toggleApiCall);
     let toggleModeCommand = vscode.commands.registerCommand('typycopilot.toggleMode', toggleModeAction);
@@ -50,16 +49,35 @@ page
     // Further activation process
     further_activate(context);
     insertSampleTextIfEditorEmpty();
+
+    // Prompt the user for permission to enable auto-save
+    enableAutoSave();
 }
 
+function enableAutoSave() {
+    // Get the current workspace configuration for 'files'
+    const configuration = vscode.workspace.getConfiguration('files');
+
+    // Update the autoSave setting to 'afterDelay'
+    configuration.update('autoSave', 'afterDelay', true)
+        .then(() => {
+            console.log('Auto-save enabled');
+        }, err => {
+            console.error('Error enabling auto-save:', err);
+        });
+}
+
+
 function updateApiToggleStatusBar() {
-    apiToggleStatusBar.text = `API: ${isApiCallEnabled ? 'Enabled' : 'Disabled'}`;
+    apiToggleStatusBar.text = `Taipy Copilot: ${isApiCallEnabled ? 'Enabled' : 'Disabled'}`;
     apiToggleStatusBar.command = 'typycopilot.toggleApiCall';
     apiToggleStatusBar.show();
 }
 
 function updateModeToggleStatusBar() {
-    modeToggleStatusBar.text = `Mode: ${mode === 'TaipyMarkdown' ? 'Taipy Markdown' : 'Python Code Generator'}`;
+    //modeToggleStatusBar.text = `Mode: ${mode === 'TaipyMarkdown' ? 'Taipy Markdown' : 'Python Code Generator'}`;
+    //silent for now
+    modeToggleStatusBar.text = ``;
     modeToggleStatusBar.command = 'typycopilot.toggleMode';
     modeToggleStatusBar.show();
 }
@@ -91,15 +109,19 @@ function further_activate(context) {
     });
 
     disposable = vscode.window.onDidChangeTextEditorSelection(updateSelectedText);
-    vscode.workspace.onDidChangeTextDocument(onTextDocumentChange);
+    //vscode.workspace.onDidChangeTextDocument(onTextDocumentChange);
+     // Register the text document change event listener
+    let textDocumentChangeDisposable = vscode.workspace.onDidChangeTextDocument(onTextDocumentChange);
+    context.subscriptions.push(textDocumentChangeDisposable);
+
     context.subscriptions.push(vscode.commands.registerCommand('extension.insertGhostText', insertGhostText));
 }
  
 
-function toggleApiCall() {
-    isApiCallEnabled = !isApiCallEnabled;
-    updateApiToggleStatusBar(isApiCallEnabled ? 'API Call Enabled' : 'API Call Disabled');
-}
+// function toggleApiCall() {
+//     isApiCallEnabled = !isApiCallEnabled;
+//     updateApiToggleStatusBar(isApiCallEnabled ? 'API Call Enabled' : 'API Call Disabled');
+// }
 
 function insertSampleTextIfEditorEmpty() {
     if (mode != 'PythonCodeGenerator') return;
@@ -188,13 +210,27 @@ function getCurrentCodeBlockFromBeginning(editor) {
     return document.getText();  // Retrieves the entire text of the document
 }
 
+function containsTripleQuote(codeBlock) {
+    return codeBlock.includes('"""');
+}
 
 async function triggerAPICall(editor) {
     let codeBlock;
 
     if (mode === 'TaipyMarkdown') {
         // Get the line before the cursor position
-        codeBlock = "In Taipy, " + getLineBeforeCursor(editor, lastCursorPosition);
+        codeBlock = '# In Taipy, ' + getLineBeforeCursor(editor, lastCursorPosition) + ':';
+
+        fullCodeBlock = getCurrentCodeBlockFromBeginning(editor);
+
+        if (containsTripleQuote(fullCodeBlock)) {
+            console.log("The code block contains triple quotes. Let's go");
+        } else {
+            console.log("The code block does not contain triple quotes.");
+            updateGeneralStatusBar('Not generating: outside of markdown, i.e. """');
+            return
+        }
+
     } else {
         // Get the whole document text and insert <FILL_ME> token at the cursor position in the text sent to API
         codeBlock = getCurrentCodeBlockFromBeginning(editor);
@@ -205,6 +241,7 @@ async function triggerAPICall(editor) {
         try {
             updateGeneralStatusBar('Sending prompt to API...');
             const ghostText = await sendTextToLLMAPI(codeBlock);
+  
             updateGeneralStatusBar('Response received from API.');
             const processedGhostText = processAPIResponse(ghostText);
             updateGhostTextDecoration(editor, processedGhostText);
@@ -273,10 +310,27 @@ function processAPIResponse(responseText) {
     return lines.join('\n');
 }
 
+function formatApiResponse(responseText) {
+    // Regular expression to find text between <| and |>
+    //console.log(responseText)
+    const regex = /<\|([\s\S]*?)\|>/;
+    const match = regex.exec(responseText);
+
+    if (match && match[1]) {
+        // Return only the text between <| and |>
+        return '<|' + match[1] + '|>';
+    } else {
+        // Return an empty string or some default text if no match is found
+        return '<|{your_value_here}|text|>';
+    }
+}
+
+
 async function sendTextToLLMAPI(text) {
 
+    let modified_prompt = text //modify should be done at server for more robust
     const requestData = {
-        inputs: text,
+        inputs: modified_prompt,
         parameters: { max_new_tokens: CONTEXT_LENGTH },
         mode: mode
     };
@@ -290,7 +344,15 @@ async function sendTextToLLMAPI(text) {
         });
  
         if (response.status === 200) {
-            return response.data.generated_text;
+            if (mode === 'TaipyMarkdown'){
+                let modified_response = formatApiResponse(response.data.generated_text)
+                return modified_response
+            }
+            else{
+                let modified_response = response.data.generated_text
+                return modified_response
+            }
+           
         } else {
             throw new Error(`LLM API request failed with status code: ${response.status}`);
         }
