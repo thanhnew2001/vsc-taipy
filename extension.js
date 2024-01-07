@@ -219,7 +219,7 @@ async function triggerAPICall(editor) {
 
     if (mode === 'TaipyMarkdown') {
         // Get the line before the cursor position
-        codeBlock = '# In Taipy, ' + getLineBeforeCursor(editor, lastCursorPosition) + ':';
+        codeBlock = '<s>[INST]' + getLineBeforeCursor(editor, lastCursorPosition) + '</INST>';
 
         fullCodeBlock = getCurrentCodeBlockFromBeginning(editor);
 
@@ -230,7 +230,7 @@ async function triggerAPICall(editor) {
             updateGeneralStatusBar('Not generating: outside of markdown, i.e. """');
             return
         }
-
+ 
     } else {
         // Get the whole document text and insert <FILL_ME> token at the cursor position in the text sent to API
         codeBlock = getCurrentCodeBlockFromBeginning(editor);
@@ -297,34 +297,31 @@ function getCurrentCodeBlockFromBeginning(editor) {
 
 
 function processAPIResponse(responseText) {
-    const cleanedResponse = responseText.replace(/<PRE>/g, '');
-    const lines = cleanedResponse.split('\n');
+    return responseText;
+    // //const cleanedResponse = responseText.replace(/<PRE>/g, '');
+    // const lines = responseText.split('\n');
     
-    // Check if there is more than one line or if the last line ends with a semicolon
-    if (lines.length > 1 && !lines[lines.length - 1].endsWith(';')) {
-        lines.pop();
-    } else if (lines.length === 1) {
-        // If there is only one line and it does not end with a semicolon, return it as is
-        return lines[0];
-    }
-    return lines.join('\n');
+    // // Check if there is more than one line or if the last line ends with a semicolon
+    // if (lines.length > 1 && !lines[lines.length - 1].endsWith(';')) {
+    //     lines.pop();
+    // } else if (lines.length === 1) {
+    //     // If there is only one line and it does not end with a semicolon, return it as is
+    //     return lines[0];
+    // }
+    // return lines.join('\n');
+}
+
+function extractMarkdownCode(input) {
+    const regex = /<\|.*?\|>/g;
+
+    value = input.match(regex) || [];
+    return value[0]
 }
 
 function formatApiResponse(responseText) {
-    // Regular expression to find text between <| and |>
-    //console.log(responseText)
-    const regex = /<\|([\s\S]*?)\|>/;
-    const match = regex.exec(responseText);
-
-    if (match && match[1]) {
-        // Return only the text between <| and |>
-        return '<|' + match[1] + '|>';
-    } else {
-        // Return an empty string or some default text if no match is found
-        return '<|{your_value_here}|text|>';
-    }
+    const markdownCodeSegments = extractMarkdownCode(responseText);
+    return markdownCodeSegments
 }
-
 
 async function sendTextToLLMAPI(text) {
 
@@ -368,6 +365,7 @@ function clearGhostTextDecorations(editor) {
 
 function updateGhostTextDecoration(editor, ghostText) {
     clearGhostTextDecorations(editor);
+    console.log(ghostText)
 
     const lines = ghostText.split('\n');
     lines.reverse().forEach((line, index) => {
