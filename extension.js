@@ -8,13 +8,13 @@ let activeGhostTextDecorations = [];
 let apiToggleStatusBar;
 let modeToggleStatusBar;
 let generalStatusBar;
-let isApiCallEnabled = true; // Control flag for API calls
+let isApiCallEnabled; // Control flag for API calls
 let mode = 'TaipyMarkdown'; // Possible values: 'TaipyMarkdown', 'PythonCodeGenerator'
 
 let CONTEXT_LENGTH; // Will be set based on configuration
 let DELAY_SECONDS;  // Will be set based on configuration
 let API_URL;        // Will be set based on configuration
-
+let API_ENABLED;
 function activate(context) {
     // Initialize status bar items
     apiToggleStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 300);
@@ -24,10 +24,13 @@ function activate(context) {
     // Read configurations
     const config = vscode.workspace.getConfiguration('typycopilot');
     CONTEXT_LENGTH = config.get('CONTEXT_LENGTH', 32);
-    DELAY_SECONDS = config.get('DELAY_SECONDS', 1) * 1000; // Convert to milliseconds
-    //API_URL = config.get('API_URL', 'https://immense-mastiff-incredibly.ngrok-free.app/api/generate');
+    DELAY_SECONDS = config.get('DELAY_SECONDS', 0.5)*1000; // Convert to milliseconds
+    API_URL = config.get('API_URL', 'https://taipycopilot.infinitiai.work/api/generate');
+    API_ENABLED = config.get('API_ENABLED', true);
 
-    API_URL = config.get('API_URL', 'https://trusting-inherently-feline.ngrok-free.app/api/generate');
+    console.log(API_ENABLED)
+
+    isApiCallEnabled = API_ENABLED
     // Register commands
     let toggleApiCallCommand = vscode.commands.registerCommand('typycopilot.toggleApiCall', toggleApiCall);
     let toggleModeCommand = vscode.commands.registerCommand('typycopilot.toggleMode', toggleModeAction);
@@ -49,24 +52,9 @@ function activate(context) {
     // Further activation process
     further_activate(context);
     insertSampleTextIfEditorEmpty();
+    vscode.commands.executeCommand('setContext', 'isApiCallEnabled', true);
 
-    // Prompt the user for permission to enable auto-save
-    enableAutoSave();
 }
-
-function enableAutoSave() {
-    // Get the current workspace configuration for 'files'
-    const configuration = vscode.workspace.getConfiguration('files');
-
-    // Update the autoSave setting to 'afterDelay'
-    configuration.update('autoSave', 'afterDelay', true)
-        .then(() => {
-            console.log('Auto-save enabled');
-        }, err => {
-            console.error('Error enabling auto-save:', err);
-        });
-}
-
 
 function updateApiToggleStatusBar() {
     apiToggleStatusBar.text = `Taipy Copilot: ${isApiCallEnabled ? 'Enabled' : 'Disabled'}`;
@@ -86,8 +74,26 @@ function updateGeneralStatusBar(message){
     generalStatusBar.text = message
 }
 
+function updateSetting(name, value) {
+    const configuration = vscode.workspace.getConfiguration();
+    const settingName = name; // Replace with your setting name
+    const newValue = value; // Replace with the value you want to set
+
+    // Update the setting at the User level
+    configuration.update(settingName, newValue, vscode.ConfigurationTarget.Global)
+        .then(() => {
+            vscode.window.showInformationMessage(`Setting ${settingName} updated to ${newValue}`);
+        }, (error) => {
+            vscode.window.showErrorMessage(`Error updating setting: ${error}`);
+        });
+}
+
 function toggleApiCall() {
     isApiCallEnabled = !isApiCallEnabled;
+    
+    updateSetting("Taipycopilot.API_ENABLED", isApiCallEnabled)
+    vscode.commands.executeCommand('setContext', 'isApiCallEnabled', isApiCallEnabled);
+
     updateApiToggleStatusBar();
     generalStatusBar.text = `API Call ${isApiCallEnabled ? 'Enabled' : 'Disabled'}`;
 }
@@ -116,16 +122,26 @@ function further_activate(context) {
 
     context.subscriptions.push(vscode.commands.registerCommand('extension.insertGhostText', insertGhostText));
 }
- 
 
-// function toggleApiCall() {
-//     isApiCallEnabled = !isApiCallEnabled;
-//     updateApiToggleStatusBar(isApiCallEnabled ? 'API Call Enabled' : 'API Call Disabled');
-// }
+
+function isCursorOutsideTripleQuotes() {
+    editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        return true; // No open text editor, assume outside by default
+    }
+
+    const position = editor.selection.active;
+    const document = editor.document;
+    const textBeforeCursor = document.getText(new vscode.Range(new vscode.Position(0, 0), position));
+
+    const tripleQuotesCount = (textBeforeCursor.match(/"{3}/g) || []).length;
+    return tripleQuotesCount % 2 === 0; // Even count means outside triple quotes
+}
+
 
 function insertSampleTextIfEditorEmpty() {
     if (mode != 'PythonCodeGenerator') return;
-    const editor = vscode.window.activeTextEditor;
+    editor = vscode.window.activeTextEditor;
     if (editor && !editor.document.getText()) {
         const sampleText = '# In Taipy, create temperature converter app\nfrom taipy.gui import Gui\n# Your Taipy logic here\nGui(page).run(use_reloader=True, port=5007)';
         const firstLine = editor.document.lineAt(0);
@@ -136,20 +152,20 @@ function insertSampleTextIfEditorEmpty() {
 }
 
 function updateSelectedText(event) {
-    const editor = vscode.window.activeTextEditor;
+    editor = vscode.window.activeTextEditor;
     if (!editor) return;
 
     lastCursorPosition = editor.selection.active;
-    clearTimeout(timer);
+    //clearTimeout(timer);
 }
 
 function handleTab() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
+    editor = vscode.window.activeTextEditor;
+    if (!editor || !vscode.commands.executeCommand('setContext', 'isApiCallEnabled', true)) return;
 
-    // Check if there are any active ghost text decorations
-    if (activeGhostTextDecorations.length > 0) {
-        // Prevent the default tab behavior and insert ghost text
+    // Check if the API call is enabled and if there are any active ghost text decorations
+    if (isApiCallEnabled && activeGhostTextDecorations.length > 0) {
+        // Insert ghost text instead of the default tab behavior
         insertGhostText();
     } else {
         // If no ghost text is present, execute the default tab behavior
@@ -158,47 +174,30 @@ function handleTab() {
 }
 
 function onTextDocumentChange(event) {
+
     if (!isApiCallEnabled) return;
  
-    const editor = vscode.window.activeTextEditor;
+    editor = vscode.window.activeTextEditor;
     if (!editor) return;
 
-    const textAfterCursor = getTextAfterCursor(editor);
-    if (textAfterCursor.trim().length > 0) {
-        updateGeneralStatusBar("Text present after cursor: Fill-in-middle mode");
-    }
+    // const textAfterCursor = getTextAfterCursor(editor);
+    // if (textAfterCursor.trim().length > 0) {
+    //     updateGeneralStatusBar("Text present after cursor: Fill-in-middle mode");
+    // }
 
     // Clear ghost text decorations if the change is not a tab press
     if (event.contentChanges.length > 0 && event.contentChanges[0].text !== '\t') {
         clearGhostTextDecorations(editor);
     }
 
-    console.log('call');
-    triggerDelayedAPICall(editor);
-}
-
-// Add this helper method if it doesn't exist
-function getTextAfterCursor(editor) {
-    const currentPosition = editor.selection.active;
-    const document = editor.document;
-    const currentLine = document.lineAt(currentPosition.line);
-    return currentLine.text.substring(currentPosition.character);
-}
-
-function triggerDelayedAPICall(editor) {
-    const textAfterCursor = getTextAfterCursor(editor);
-    if (textAfterCursor.trim().length === 0) {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-            triggerAPICall(editor);
-        }, DELAY_SECONDS);
-    }
-}
-
-function getCurrentCodeBlock(editor, position) {
-    const document = editor.document;
-    const range = new vscode.Range(new vscode.Position(0, 0), position);
-    return document.getText(range);
+    //make sure that it is cleared 
+    //if there is another event come before its timeout
+    clearTimeout(timer)
+    // Set a new timer
+    timer = setTimeout(() => {
+        // Action to perform after the user has paused for the delay time
+        triggerAPICall();
+    }, DELAY_SECONDS);
 }
 
 function getCurrentCodeBlockFromBeginning(editor) {
@@ -215,6 +214,13 @@ function containsTripleQuote(codeBlock) {
 }
 
 async function triggerAPICall(editor) {
+    
+    console.log("triggerAPICall..")
+    
+    editor = vscode.window.activeTextEditor;
+
+    if (isCursorOutsideTripleQuotes()) return;
+
     let codeBlock;
 
     if (mode === 'TaipyMarkdown') {
@@ -247,44 +253,28 @@ async function triggerAPICall(editor) {
             updateGhostTextDecoration(editor, processedGhostText);
         } catch (error) {
             console.error('Error fetching text:', error);
-            updateGeneralStatusBar('Please give me few more initial text so I can suggest code');
+            updateGeneralStatusBar('Failed to generate, try changing your prompt');
         }
     }
 }
 
 function getLineBeforeCursor(editor, position) {
-    const document = editor.document;
-    let lineNumber = position.line;
-    while (lineNumber >= 0) {
-        const lineText = document.lineAt(lineNumber).text;
-        if (lineText.trim().length > 0) {
-            return lineText;
+    try {
+        editor = vscode.window.activeTextEditor;
+        let lineNumber = position.line;
+        while (lineNumber >= 0) {
+            const lineText = editor.document.lineAt(lineNumber).text;
+            if (lineText.trim().length > 0) {
+                return lineText;
+            }
+            lineNumber--;
         }
-        lineNumber--;
+        return '';
+    } catch (error) {
+        console.log(error)
     }
-    return '';
+  
 }
-
-
-// function insertFillMeTokenInText(text, position) {
-//     // Convert the text into an array of lines
-//     const lines = text.split('\n');
-//     const positionLine = position.line;
-//     const positionChar = position.character;
-
-//     // Check if the position line is within the range of lines array
-//     if (positionLine < lines.length) {
-//         // Insert <FILL_ME> at the specified character position in the specified line
-//         lines[positionLine] = lines[positionLine].slice(0, positionChar) + '<FILL_ME>' + lines[positionLine].slice(positionChar);
-//     } 
-//     else {
-//         // If position line is out of range, append <FILL_ME> at the end
-//         lines.push('<FILL_ME>');
-//     }
-
-//     // Join the lines back into a single text string
-//     return lines.join('\n');
-// }
 
 
 function getCurrentCodeBlockFromBeginning(editor) {
@@ -298,17 +288,6 @@ function getCurrentCodeBlockFromBeginning(editor) {
 
 function processAPIResponse(responseText) {
     return responseText;
-    // //const cleanedResponse = responseText.replace(/<PRE>/g, '');
-    // const lines = responseText.split('\n');
-    
-    // // Check if there is more than one line or if the last line ends with a semicolon
-    // if (lines.length > 1 && !lines[lines.length - 1].endsWith(';')) {
-    //     lines.pop();
-    // } else if (lines.length === 1) {
-    //     // If there is only one line and it does not end with a semicolon, return it as is
-    //     return lines[0];
-    // }
-    // return lines.join('\n');
 }
 
 function extractMarkdownCode(input) {
@@ -333,6 +312,7 @@ async function sendTextToLLMAPI(text) {
     };
 
     console.log(requestData)
+    console.log("API_URL="+API_URL)
 
     try {
         const timeoutMilliseconds = 5000;
@@ -391,7 +371,7 @@ function updateGhostTextDecoration(editor, ghostText) {
 
 
 function insertGhostText() {
-    const editor = vscode.window.activeTextEditor;
+    editor = vscode.window.activeTextEditor;
     if (!editor || activeGhostTextDecorations.length === 0) return;
 
     editor.edit(editBuilder => {
@@ -407,6 +387,8 @@ function insertGhostText() {
 }
 
 function deactivate() {
+    vscode.commands.executeCommand('setContext', 'isApiCallEnabled', false);
+
     disposable.dispose();
     statusBar.dispose();
 }
